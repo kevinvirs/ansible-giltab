@@ -1,0 +1,10 @@
+---
+
+ruby_gems_version: 2.6.0
+gitlab_license_path: "/opt/gitlab/embedded/lib/ruby/gems/{{ ruby_gems_version }}/gems/gitlab-license-1.0.0/lib"
+admin_api_token: "your_admin_token"
+gitlab_domain: gitlab.example.com
+license_plan: ultimate #gold, silver, ultimate
+license_name: TestUser
+license_company: Testing LLC
+license_email: test@example.com

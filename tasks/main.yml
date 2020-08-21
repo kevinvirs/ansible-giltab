@@ -1,0 +1,73 @@
+---
+
+- name: Disable immutable for .license_encryption_key
+  file:
+    path: "/opt/gitlab/embedded/service/gitlab-rails/.license_encryption_key.pub"
+    attr: -i
+  ignore_errors: yes
+
+- name: Install irb packages, upgrade gitlab
+  package:
+    name: "{{ item }}"
+    state: latest
+  with_items:
+    - irb
+    - gitlab-ee
+
+- gem:
+    name: gitlab-license
+    user_install: false
+    install_dir: "{{ gitlab_license_path }}"
+    state: latest
+  become: true
+
+- name: Generate gitlab-licensing.rb
+  template:
+    src: "gitlab-licensing.rb.j2"
+    dest: "{{ gitlab_license_path }}/gitlab-licensing.rb"
+
+- name: Copy patched license generator
+  copy:
+    src:  "license.rb"
+    dest: "{{ gitlab_license_path }}/gitlab/license.rb"
+
+- name: Generate license
+  command: 'irb -r "{{ gitlab_license_path }}/gitlab-licensing.rb"'
+  args:
+    chdir: "{{ gitlab_license_path }}"
+
+- name: Copy encryption public key
+  copy:
+    src:  "{{ gitlab_license_path }}/license_key.pub"
+    dest: "/opt/gitlab/embedded/service/gitlab-rails/.license_encryption_key.pub"
+    force: yes
+    remote_src: yes
+
+- name: Get Gitlab license key
+  command: " cat {{ gitlab_license_path }}/GitLabBV.gitlab-license"
+  register: gitlab_license_key
+
+- name: Enable immutable for .license_encryption_key
+  file:
+    path: "/opt/gitlab/embedded/service/gitlab-rails/.license_encryption_key.pub"
+    attr: +i
+
+- name: Restart Gitlab
+  command: "gitlab-ctl restart"
+
+- name: "wait for {{ gitlab_domain }} to come up"
+  uri:
+    url: "https://{{ gitlab_domain }}"
+    method: GET
+  register: _result
+  until: _result.status == 200
+  retries: 60
+  delay: 10
+
+- name: Inject license to gitlab
+  uri:
+    url: "https://{{ gitlab_domain }}/api/v4/license?license={{ gitlab_license_key.stdout | replace('\n', '') }}"
+    method: POST
+    status_code: 201
+    headers:
+      PRIVATE-TOKEN: "{{ admin_api_token }}"
